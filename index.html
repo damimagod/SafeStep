@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>SafeStep Map</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:#060d14;font-family:'Courier New',monospace;color:#7effd4;padding:12px;min-height:100vh;}
+h1{font-size:13px;font-weight:700;letter-spacing:3px;color:#7effd4;margin-bottom:10px;}
+canvas{display:block;width:100%;border-radius:8px;background:#040a0f;margin-bottom:10px;}
+
+.sec{font-size:9px;letter-spacing:1px;color:#3a7a6a;text-transform:uppercase;margin-bottom:6px;margin-top:10px;}
+
+/* miner row */
+.miner-row{display:flex;gap:6px;margin-bottom:6px;}
+select{flex:1;background:#0a1a14;border:1px solid #0f3a2a;border-radius:7px;padding:8px;font-size:12px;font-family:'Courier New',monospace;color:#7effd4;outline:none;-webkit-appearance:none;}
+.btn{background:#0a1a14;border:1px solid #1aff8c;border-radius:7px;padding:8px 12px;font-size:11px;color:#1aff8c;font-family:'Courier New',monospace;cursor:pointer;white-space:nowrap;transition:all 0.15s;}
+.btn:active{background:#1aff8c;color:#040a0f;}
+.btn.red{border-color:#ff5555;color:#ff5555;}
+.btn.red:active{background:#ff5555;color:#040a0f;}
+
+/* miner chips */
+.chips{display:flex;flex-wrap:wrap;gap:5px;min-height:24px;margin-bottom:4px;}
+.chip{display:flex;align-items:center;gap:4px;background:#0a1a14;border:1px solid #1aff8c;border-radius:20px;padding:3px 10px 3px 8px;font-size:11px;color:#1aff8c;}
+.chip.danger{border-color:#ff5555;color:#ff5555;}
+.chip-rm{cursor:pointer;color:#3a7a6a;margin-left:3px;font-size:14px;line-height:1;}
+.chip-rm:active{color:#ff5555;}
+
+/* zone toggles */
+.zones{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;}
+.ztog{background:#0a1a14;border:1px solid #0f3a2a;border-radius:7px;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:all 0.2s;user-select:none;}
+.ztog.hazard{border-color:#ff5555;background:#160a0a;}
+.ztog-left{display:flex;align-items:center;gap:6px;}
+.zdot{width:7px;height:7px;border-radius:50%;background:#1aff8c;flex-shrink:0;transition:background 0.2s;}
+.ztog.hazard .zdot{background:#ff5555;}
+.zname{font-size:11px;}
+.ztog.hazard .zname{color:#f09595;}
+.zbadge{font-size:9px;padding:2px 5px;border-radius:8px;background:#0f3a2a;color:#3a7a6a;}
+.ztog.hazard .zbadge{background:rgba(255,85,85,0.15);color:#ff5555;}
+
+/* route box */
+.route-box{border-radius:8px;padding:11px 13px;margin-bottom:10px;border-left:3px solid #1aff8c;background:#040a0f;}
+.route-box.warn{border-left-color:#f0c040;}
+.route-box.danger{border-left-color:#ff5555;}
+.route-box.survival{border-left-color:#9b59b6;background:#0d0a14;}
+.route-lbl{font-size:9px;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;color:#3a7a6a;}
+.route-title{font-size:13px;font-weight:700;margin-bottom:4px;}
+.route-sub{font-size:11px;color:#7effd4;line-height:1.7;}
+
+/* survival */
+.survival-steps{margin-top:8px;}
+.step{display:flex;gap:7px;margin-bottom:5px;align-items:flex-start;}
+.step-num{font-size:10px;background:rgba(155,89,182,0.2);border:1px solid #9b59b6;color:#c39bd3;border-radius:4px;padding:1px 5px;flex-shrink:0;margin-top:1px;}
+.step-txt{font-size:11px;color:#c39bd3;line-height:1.5;}
+
+/* legend */
+.legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;}
+.leg{display:flex;align-items:center;gap:4px;font-size:10px;color:#3a7a6a;}
+.legdot{width:7px;height:7px;border-radius:50%;}
+.legline{width:14px;height:2px;border-radius:1px;}
+</style>
+</head>
+<body>
+
+<h1>SAFESTEP — MAP</h1>
+
+<canvas id="mc" height="280"></canvas>
+
+<div class="sec">Place miners</div>
+<div class="miner-row">
+  <select id="zoneSelect">
+    <option value="">— select zone —</option>
+    <option value="Z1">Z1 — Shaft entrance</option>
+    <option value="Z2">Z2 — Main corridor</option>
+    <option value="Z3">Z3 — Lower shaft</option>
+    <option value="Z4">Z4 — Cross tunnel</option>
+    <option value="Z5">Z5 — Storage bay</option>
+    <option value="Z6">Z6 — Pump room</option>
+    <option value="Z7">Z7 — Upper gallery</option>
+    <option value="Z8">Z8 — Mid gallery</option>
+    <option value="Z9">Z9 — Junction hall</option>
+    <option value="Z10">Z10 — Exit corridor</option>
+  </select>
+  <div class="btn" onclick="addMiner()">+ Add</div>
+  <div class="btn red" onclick="clearMiners()">Clear</div>
+</div>
+<div class="chips" id="chips"><span style="font-size:11px;color:#3a7a6a;">No miners placed</span></div>
+
+<div class="sec">Hazard zones — tap to toggle</div>
+<div class="zones" id="zones"></div>
+
+<div class="route-box" id="routeBox">
+  <div class="route-lbl">Escape route</div>
+  <div class="route-title" id="routeTitle" style="color:#1aff8c;">All clear — primary route</div>
+  <div class="route-sub" id="routeSub">No miners placed — showing global route</div>
+  <div id="survivalSteps"></div>
+</div>
+
+<div class="legend">
+  <div class="leg"><div class="legdot" style="background:#1aff8c;"></div>Safe</div>
+  <div class="leg"><div class="legdot" style="background:#ff5555;"></div>Hazard</div>
+  <div class="leg"><div class="legline" style="background:#1aff8c;"></div>Primary</div>
+  <div class="leg"><div class="legline" style="background:#f0c040;"></div>Alternate</div>
+  <div class="leg"><div class="legdot" style="background:#e056fd;"></div>Miner</div>
+</div>
+
+<script>
+const canvas = document.getElementById('mc');
+const dpr = window.devicePixelRatio || 1;
+let CW, CH = 280;
+function initCanvas() { CW = canvas.offsetWidth || 340; canvas.width = CW*dpr; canvas.height = CH*dpr; }
+initCanvas();
+const ctx = canvas.getContext('2d');
+ctx.scale(dpr, dpr);
+
+const zoneDefs = [
+  {id:'Z1',  label:'Z1',  sub:'Shaft entrance', fx:0.06,fy:0.44,fw:0.12,fh:0.18},
+  {id:'Z2',  label:'Z2',  sub:'Main corridor',  fx:0.22,fy:0.30,fw:0.12,fh:0.26},
+  {id:'Z3',  label:'Z3',  sub:'Lower shaft',    fx:0.22,fy:0.68,fw:0.12,fh:0.18},
+  {id:'Z4',  label:'Z4',  sub:'Cross tunnel',   fx:0.38,fy:0.12,fw:0.12,fh:0.22},
+  {id:'Z5',  label:'Z5',  sub:'Storage bay',    fx:0.38,fy:0.42,fw:0.12,fh:0.22},
+  {id:'Z6',  label:'Z6',  sub:'Pump room',      fx:0.38,fy:0.72,fw:0.12,fh:0.18},
+  {id:'Z7',  label:'Z7',  sub:'Upper gallery',  fx:0.55,fy:0.06,fw:0.12,fh:0.22},
+  {id:'Z8',  label:'Z8',  sub:'Mid gallery',    fx:0.55,fy:0.40,fw:0.12,fh:0.22},
+  {id:'Z9',  label:'Z9',  sub:'Junction hall',  fx:0.55,fy:0.70,fw:0.12,fh:0.20},
+  {id:'Z10', label:'Z10', sub:'Exit corridor',  fx:0.73,fy:0.28,fw:0.13,fh:0.40},
+];
+
+const connections = [
+  ['ENTRY','Z1'],['Z1','Z2'],['Z1','Z3'],
+  ['Z2','Z4'],['Z2','Z5'],['Z3','Z5'],['Z3','Z6'],
+  ['Z4','Z7'],['Z4','Z5'],['Z5','Z8'],['Z5','Z6'],
+  ['Z6','Z9'],['Z7','Z10'],['Z8','Z10'],['Z9','Z10'],
+  ['Z10','EXITA'],['Z10','EXITB'],
+];
+
+const specialNodes = {
+  ENTRY:{fx:0.01,fy:0.50,label:'ENTRY'},
+  EXITA:{fx:0.93,fy:0.20,label:'EXIT A'},
+  EXITB:{fx:0.93,fy:0.80,label:'EXIT B'},
+};
+
+const zones = {}; zoneDefs.forEach(z=>zones[z.id]=false);
+let miners = [], minerCount = 0;
+let currentRoute = null, altRoute = null;
+
+function zoneCenter(id) {
+  if(specialNodes[id]) return {x:specialNodes[id].fx*CW, y:specialNodes[id].fy*CH};
+  const z = zoneDefs.find(z=>z.id===id);
+  return {x:(z.fx+z.fw/2)*CW, y:(z.fy+z.fh/2)*CH};
+}
+function zoneRect(id) {
+  const z = zoneDefs.find(z=>z.id===id); if(!z) return null;
+  return {x:z.fx*CW, y:z.fy*CH, w:z.fw*CW, h:z.fh*CH};
+}
+
+function findPath(start, end) {
+  const graph = {};
+  connections.forEach(([a,b])=>{
+    if(!graph[a])graph[a]=[];if(!graph[b])graph[b]=[];
+    graph[a].push(b);graph[b].push(a);
+  });
+  const queue=[[start,[start]]]; const visited=new Set([start]);
+  while(queue.length){
+    const [node,path]=queue.shift();
+    if(node===end) return path;
+    for(const nb of (graph[node]||[])){
+      if(!visited.has(nb)&&!zones[nb]){visited.add(nb);queue.push([nb,[...path,nb]]);}
+    }
+  }
+  return null;
+}
+
+function addMiner() {
+  const sel = document.getElementById('zoneSelect');
+  const zone = sel.value; if(!zone) return;
+  minerCount++;
+  const id = 'M'+minerCount;
+  miners.push({id, zone});
+  sel.value='';
+  renderChips();
+  updateRoute();
+  draw();
+}
+
+function removeMiner(id) {
+  miners = miners.filter(m=>m.id!==id);
+  renderChips(); updateRoute(); draw();
+}
+
+function clearMiners() {
+  miners=[]; minerCount=0;
+  renderChips(); updateRoute(); draw();
+}
+
+function renderChips() {
+  const c = document.getElementById('chips');
+  if(miners.length===0){c.innerHTML='<span style="font-size:11px;color:#3a7a6a;">No miners placed</span>';return;}
+  c.innerHTML = miners.map(m=>`
+    <div class="chip${zones[m.zone]?' danger':''}">
+      ⬡ ${m.id}@${m.zone}
+      <span class="chip-rm" onclick="removeMiner('${m.id}')">×</span>
+    </div>`).join('');
+}
+
+function toggleZone(id) {
+  zones[id]=!zones[id];
+  const tog=document.getElementById('tog-'+id);
+  const badge=document.getElementById('badge-'+id);
+  tog.classList.toggle('hazard',zones[id]);
+  badge.textContent=zones[id]?'HAZARD':'SAFE';
+  renderChips(); updateRoute(); draw();
+}
+
+function updateRoute() {
+  const starts = miners.length>0 ? [...new Set(miners.map(m=>m.zone))] : ['ENTRY'];
+  currentRoute=null; altRoute=null;
+  const trapped=[], routed=[];
+  for(const start of starts){
+    if(zones[start]){trapped.push(start);continue;}
+    const pri=findPath(start,'EXITA');
+    if(pri){currentRoute=pri;routed.push(start);continue;}
+    const alt=findPath(start,'EXITB');
+    if(alt){altRoute=alt;routed.push(start);continue;}
+    trapped.push(start);
+  }
+  const box=document.getElementById('routeBox');
+  const title=document.getElementById('routeTitle');
+  const sub=document.getElementById('routeSub');
+  const sv=document.getElementById('survivalSteps');
+
+  if(trapped.length>0 && routed.length===0){
+    box.className='route-box survival';
+    title.style.color='#c39bd3';
+    title.textContent='No escape — survival protocol';
+    sub.textContent='All routes blocked from '+trapped.join(', ')+'. Follow steps:';
+    sv.innerHTML=`
+      <div class="survival-steps">
+        <div class="step"><div class="step-num">01</div><div class="step-txt">Move to highest ground in your zone — gases pool low.</div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-txt">Block tunnel openings with clothing or debris to slow gas entry.</div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-txt">Stay still and breathe slowly — conserve oxygen.</div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-txt">Activate ESP32 buzzer in SOS pattern: ···−−−··· continuously.</div></div>
+        <div class="step"><div class="step-num">05</div><div class="step-txt">Spray glow paint around you to mark your position visibly.</div></div>
+        <div class="step"><div class="step-num">06</div><div class="step-txt">Ration water. Do not eat — digestion uses more oxygen.</div></div>
+        <div class="step"><div class="step-num">07</div><div class="step-txt">Stay awake in shifts. Rescue teams are already en route.</div></div>
+      </div>`;
+  } else if(trapped.length>0 && routed.length>0){
+    box.className='route-box warn';
+    title.style.color='#f0c040';
+    title.textContent='⚠ '+trapped.length+' miner(s) trapped';
+    const r=currentRoute||altRoute;
+    sub.textContent=(r?r.join(' → ')+' · ETA '+(r.length+2)+' min\n':'')+'Trapped in: '+trapped.join(', ')+' — see survival steps above.';
+    sv.innerHTML=`<div class="survival-steps">
+      <div class="step"><div class="step-num">01</div><div class="step-txt">Move to highest ground — gases pool low.</div></div>
+      <div class="step"><div class="step-num">02</div><div class="step-txt">Block openings, conserve oxygen, activate SOS buzzer.</div></div>
+      <div class="step"><div class="step-num">03</div><div class="step-txt">Spray glow paint to mark position. Help is coming.</div></div>
+    </div>`;
+  } else if(currentRoute){
+    box.className='route-box';
+    title.style.color='#1aff8c';
+    title.textContent='Route clear — Exit A';
+    sub.textContent=currentRoute.join(' → ')+' · ETA '+(currentRoute.length+2)+' min';
+    sv.innerHTML='';
+  } else if(altRoute){
+    box.className='route-box warn';
+    title.style.color='#f0c040';
+    title.textContent='Exit A blocked — use Exit B';
+    sub.textContent=altRoute.join(' → ')+' · ETA '+(altRoute.length+3)+' min';
+    sv.innerHTML='';
+  } else {
+    box.className='route-box danger';
+    title.style.color='#ff5555';
+    title.textContent='No escape route found';
+    sub.textContent='All paths blocked.';
+    sv.innerHTML='';
+  }
+}
+
+function drawPath(pts,color,dashed){
+  if(!pts||pts.length<2)return;
+  ctx.strokeStyle=color;ctx.lineWidth=3;ctx.lineCap='round';
+  ctx.setLineDash(dashed?[7,5]:[]);ctx.shadowColor=color;ctx.shadowBlur=8;
+  ctx.beginPath();
+  pts.forEach((id,i)=>{const c=zoneCenter(id);if(i===0)ctx.moveTo(c.x,c.y);else ctx.lineTo(c.x,c.y);});
+  ctx.stroke();ctx.setLineDash([]);ctx.shadowBlur=0;
+  pts.forEach((id,i)=>{
+    if(i===0||i===pts.length-1)return;
+    const c=zoneCenter(id);ctx.beginPath();ctx.arc(c.x,c.y,3,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();
+  });
+}
+
+function draw(){
+  ctx.clearRect(0,0,CW,CH);
+  ctx.fillStyle='#040a0f';ctx.fillRect(0,0,CW,CH);
+  for(let x=0;x<CW;x+=16){ctx.strokeStyle='rgba(255,255,255,0.022)';ctx.lineWidth=0.5;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,CH);ctx.stroke();}
+  for(let y=0;y<CH;y+=16){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(CW,y);ctx.stroke();}
+  connections.forEach(([a,b])=>{
+    const ca=zoneCenter(a),cb=zoneCenter(b);
+    ctx.strokeStyle='rgba(30,255,160,0.09)';ctx.lineWidth=9;ctx.lineCap='round';ctx.setLineDash([]);
+    ctx.beginPath();ctx.moveTo(ca.x,ca.y);ctx.lineTo(cb.x,cb.y);ctx.stroke();
+  });
+  if(currentRoute)drawPath(currentRoute,'#1aff8c',false);
+  if(altRoute)drawPath(altRoute,'#f0c040',true);
+  zoneDefs.forEach(z=>{
+    const x=z.fx*CW,y=z.fy*CH,w=z.fw*CW,h=z.fh*CH,hz=zones[z.id];
+    ctx.fillStyle=hz?'rgba(255,85,85,0.18)':'rgba(30,255,160,0.06)';
+    ctx.strokeStyle=hz?'rgba(255,85,85,0.75)':'rgba(30,255,160,0.28)';
+    ctx.lineWidth=1;ctx.setLineDash(hz?[3,3]:[]);
+    ctx.beginPath();ctx.roundRect(x,y,w,h,5);ctx.fill();ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=hz?'rgba(255,150,150,0.95)':'rgba(30,255,160,0.8)';
+    ctx.font=`700 ${Math.round(w*0.19)}px monospace`;ctx.textAlign='center';
+    ctx.fillText(z.label,x+w/2,y+h/2-3);
+    ctx.fillStyle='rgba(255,255,255,0.22)';ctx.font=`${Math.round(w*0.11)}px monospace`;
+    ctx.fillText(z.sub,x+w/2,y+h/2+11);
+    if(hz){ctx.fillStyle='#f0c040';ctx.font=`${Math.round(w*0.18)}px monospace`;ctx.fillText('⚠',x+w-10,y+13);}
+  });
+  Object.entries(specialNodes).forEach(([id,n])=>{
+    const x=n.fx*CW,y=n.fy*CH;
+    ctx.beginPath();ctx.arc(x,y,7,0,Math.PI*2);ctx.fillStyle='#58a6ff';ctx.fill();
+    ctx.fillStyle='rgba(88,166,255,0.85)';ctx.font='8px monospace';ctx.textAlign='center';
+    ctx.fillText(n.label,x,y+(id==='ENTRY'?-11:17));
+  });
+  miners.forEach((m,i)=>{
+    const r=zoneRect(m.zone);if(!r)return;
+    const mx=r.x+r.w*0.5+(i%2===0?-7:7),my=r.y+r.h*0.70;
+    const hz=zones[m.zone],col=hz?'#ff5555':'#e056fd';
+    ctx.beginPath();ctx.arc(mx,my,7,0,Math.PI*2);
+    ctx.fillStyle=hz?'rgba(255,85,85,0.2)':'rgba(224,86,253,0.2)';ctx.fill();
+    ctx.beginPath();ctx.arc(mx,my,4,0,Math.PI*2);ctx.fillStyle=col;ctx.fill();
+    ctx.fillStyle=col;ctx.font='700 7px monospace';ctx.textAlign='center';ctx.fillText(m.id,mx,my-9);
+  });
+}
+
+// build zone toggle buttons
+const zonesEl=document.getElementById('zones');
+zoneDefs.forEach(z=>{
+  const d=document.createElement('div');
+  d.className='ztog';d.id='tog-'+z.id;d.onclick=()=>toggleZone(z.id);
+  d.innerHTML=`<div class="ztog-left"><div class="zdot"></div><div class="zname">${z.label} — ${z.sub}</div></div><div class="zbadge" id="badge-${z.id}">SAFE</div>`;
+  zonesEl.appendChild(d);
+});
+
+updateRoute();
+draw();
+</script>
+</body>
+</html>
