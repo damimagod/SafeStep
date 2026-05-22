@@ -27,6 +27,15 @@ select{flex:1;background:#0a1a14;border:1px solid #0f3a2a;border-radius:7px;padd
 .chip-rm{cursor:pointer;color:#3a7a6a;margin-left:3px;font-size:14px;line-height:1;}
 .chip-rm:active{color:#ff5555;}
 
+/* gas alerts */
+.gas-alerts{margin-bottom:10px;}
+.gas-alert{background:#0a1a14;border-left:3px solid #f0c040;border-radius:7px;padding:9px 11px;margin-bottom:6px;}
+.gas-alert.critical{border-left-color:#ff5555;background:#160a0a;}
+.gas-title{font-size:12px;font-weight:700;color:#f0c040;margin-bottom:3px;}
+.gas-alert.critical .gas-title{color:#ff5555;}
+.gas-detail{font-size:10px;color:#7effd4;line-height:1.5;}
+.gas-reading{font-size:11px;font-weight:700;margin-top:3px;}
+
 /* zone toggles */
 .zones{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;}
 .ztog{background:#0a1a14;border:1px solid #0f3a2a;border-radius:7px;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:all 0.2s;user-select:none;}
@@ -87,6 +96,8 @@ select{flex:1;background:#0a1a14;border:1px solid #0f3a2a;border-radius:7px;padd
 </div>
 <div class="chips" id="chips"><span style="font-size:11px;color:#3a7a6a;">No miners placed</span></div>
 
+<div id="gasAlerts" class="gas-alerts"></div>
+
 <div class="sec">Hazard zones — tap to toggle</div>
 <div class="zones" id="zones"></div>
 
@@ -126,6 +137,50 @@ const zoneDefs = [
   {id:'Z9',  label:'Z9',  sub:'Junction hall',  fx:0.55,fy:0.70,fw:0.12,fh:0.20},
   {id:'Z10', label:'Z10', sub:'Exit corridor',  fx:0.73,fy:0.28,fw:0.13,fh:0.40},
 ];
+
+// Zone-specific gas hazards for mines
+const zoneGasProfiles = {
+  Z1: [ // Shaft entrance - ventilation shaft
+    {gas:'CO', range:[5,25], safe:25, critical:50, desc:'Carbon monoxide from diesel equipment', unit:'ppm'},
+    {gas:'O2', range:[19.5,21], safe:19.5, critical:18, desc:'Oxygen level', unit:'%', inverted:true},
+  ],
+  Z2: [ // Main corridor - high traffic
+    {gas:'CO2', range:[0.3,1.2], safe:1.5, critical:3, desc:'Carbon dioxide from respiration & machinery', unit:'%'},
+    {gas:'NO2', range:[0,3], safe:3, critical:5, desc:'Nitrogen dioxide from blasting residue', unit:'ppm'},
+  ],
+  Z3: [ // Lower shaft - deep, poor ventilation
+    {gas:'CH4', range:[0.2,1.5], safe:1, critical:5, desc:'Methane accumulation in low areas', unit:'%'},
+    {gas:'H2S', range:[0,8], safe:10, critical:20, desc:'Hydrogen sulfide from organic decay', unit:'ppm'},
+  ],
+  Z4: [ // Cross tunnel - intermediate zone
+    {gas:'CO', range:[8,35], safe:25, critical:50, desc:'Carbon monoxide from equipment exhaust', unit:'ppm'},
+    {gas:'SO2', range:[0,3], safe:5, critical:10, desc:'Sulfur dioxide from ore oxidation', unit:'ppm'},
+  ],
+  Z5: [ // Storage bay - stagnant air
+    {gas:'CH4', range:[0.4,2], safe:1, critical:5, desc:'Methane seepage in confined space', unit:'%'},
+    {gas:'CO2', range:[0.5,2], safe:1.5, critical:3, desc:'Carbon dioxide buildup', unit:'%'},
+  ],
+  Z6: [ // Pump room - wet, mechanical
+    {gas:'H2S', range:[2,12], safe:10, critical:20, desc:'Hydrogen sulfide from water drainage', unit:'ppm'},
+    {gas:'NH3', range:[0,15], safe:25, critical:35, desc:'Ammonia from explosives residue', unit:'ppm'},
+  ],
+  Z7: [ // Upper gallery - active mining
+    {gas:'NO2', range:[1,5], safe:3, critical:5, desc:'Nitrogen dioxide from fresh blasting', unit:'ppm'},
+    {gas:'CO', range:[15,45], safe:25, critical:50, desc:'Carbon monoxide from drilling', unit:'ppm'},
+  ],
+  Z8: [ // Mid gallery
+    {gas:'Radon', range:[1,4], safe:4, critical:10, desc:'Radon gas from rock emanation', unit:'pCi/L'},
+    {gas:'O2', range:[18.5,20.5], safe:19.5, critical:18, desc:'Oxygen depletion', unit:'%', inverted:true},
+  ],
+  Z9: [ // Junction hall - convergence point
+    {gas:'CO2', range:[0.8,2.5], safe:1.5, critical:3, desc:'Carbon dioxide convergence from tunnels', unit:'%'},
+    {gas:'CH4', range:[0.3,1.8], safe:1, critical:5, desc:'Methane mixing zone', unit:'%'},
+  ],
+  Z10: [ // Exit corridor
+    {gas:'CO', range:[3,18], safe:25, critical:50, desc:'Carbon monoxide ventilation zone', unit:'ppm'},
+    {gas:'O2', range:[20,21], safe:19.5, critical:18, desc:'Oxygen level near exit', unit:'%', inverted:true},
+  ],
+};
 
 const connections = [
   ['ENTRY','Z1'],['Z1','Z2'],['Z1','Z3'],
@@ -172,6 +227,72 @@ function findPath(start, end) {
   return null;
 }
 
+function generateGasReading(gasProfile) {
+  const [min, max] = gasProfile.range;
+  const reading = min + Math.random() * (max - min);
+  return reading;
+}
+
+function assessGasLevel(reading, gasProfile) {
+  if (gasProfile.inverted) {
+    // For O2, lower is worse
+    if (reading < gasProfile.critical) return 'critical';
+    if (reading < gasProfile.safe) return 'warning';
+    return 'safe';
+  } else {
+    // For toxic gases, higher is worse
+    if (reading > gasProfile.critical) return 'critical';
+    if (reading > gasProfile.safe) return 'warning';
+    return 'safe';
+  }
+}
+
+function updateGasAlerts() {
+  const alertsEl = document.getElementById('gasAlerts');
+  if (miners.length === 0) {
+    alertsEl.innerHTML = '';
+    return;
+  }
+
+  const alerts = [];
+  miners.forEach(m => {
+    const profile = zoneGasProfiles[m.zone];
+    if (!profile) return;
+    
+    profile.forEach(gasProfile => {
+      const reading = generateGasReading(gasProfile);
+      const level = assessGasLevel(reading, gasProfile);
+      
+      if (level === 'warning' || level === 'critical') {
+        alerts.push({
+          miner: m.id,
+          zone: m.zone,
+          gas: gasProfile.gas,
+          reading: reading.toFixed(gasProfile.unit === '%' ? 1 : 0),
+          unit: gasProfile.unit,
+          desc: gasProfile.desc,
+          level: level
+        });
+      }
+    });
+  });
+
+  if (alerts.length === 0) {
+    alertsEl.innerHTML = '<div style="font-size:11px;color:#1aff8c;padding:8px;background:#0a1a14;border-radius:7px;border:1px solid #0f3a2a;">✓ All gas levels nominal</div>';
+    return;
+  }
+
+  alertsEl.innerHTML = alerts.map(a => `
+    <div class="gas-alert ${a.level === 'critical' ? 'critical' : ''}">
+      <div class="gas-title">${a.level === 'critical' ? '⚠ CRITICAL' : '⚠ WARNING'}: ${a.gas} in ${a.zone}</div>
+      <div class="gas-detail">${a.desc}</div>
+      <div class="gas-reading" style="color:${a.level === 'critical' ? '#ff5555' : '#f0c040'}">
+        ${a.miner}: ${a.reading} ${a.unit}
+      </div>
+    </div>
+  `).join('');
+}
+
 function addMiner() {
   const sel = document.getElementById('zoneSelect');
   const zone = sel.value; if(!zone) return;
@@ -180,18 +301,25 @@ function addMiner() {
   miners.push({id, zone});
   sel.value='';
   renderChips();
+  updateGasAlerts();
   updateRoute();
   draw();
 }
 
 function removeMiner(id) {
   miners = miners.filter(m=>m.id!==id);
-  renderChips(); updateRoute(); draw();
+  renderChips(); 
+  updateGasAlerts();
+  updateRoute(); 
+  draw();
 }
 
 function clearMiners() {
   miners=[]; minerCount=0;
-  renderChips(); updateRoute(); draw();
+  renderChips(); 
+  updateGasAlerts();
+  updateRoute(); 
+  draw();
 }
 
 function renderChips() {
@@ -210,7 +338,10 @@ function toggleZone(id) {
   const badge=document.getElementById('badge-'+id);
   tog.classList.toggle('hazard',zones[id]);
   badge.textContent=zones[id]?'HAZARD':'SAFE';
-  renderChips(); updateRoute(); draw();
+  renderChips(); 
+  updateGasAlerts();
+  updateRoute(); 
+  draw();
 }
 
 function updateRoute() {
@@ -342,7 +473,15 @@ zoneDefs.forEach(z=>{
 });
 
 updateRoute();
+updateGasAlerts();
 draw();
+
+// Auto-refresh gas readings every 3 seconds
+setInterval(() => {
+  if (miners.length > 0) {
+    updateGasAlerts();
+  }
+}, 3000);
 </script>
 </body>
 </html>
